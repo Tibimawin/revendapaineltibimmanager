@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Tenant, Reseller, BaserowClient, CreditTransaction } from '../types';
 import { saasStore } from '../services/storage';
 import { PixModal } from './PixModal';
+import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { 
   Coins, 
   Users, 
@@ -16,6 +17,7 @@ import {
   Check, 
   Trash2, 
   Calendar,
+  Sparkles,
   X
 } from 'lucide-react';
 
@@ -66,7 +68,7 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
 
   // Search and Filter
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'TODOS' | 'ATIVOS' | 'AVENCER' | 'VENCIDOS' | 'TESTES'>('TODOS');
+  const [statusFilter, setStatusFilter] = useState<'TODOS' | 'PREMIUM' | 'AVENCER' | 'VENCIDOS' | 'TESTES'>('TODOS');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const refreshData = () => {
@@ -83,7 +85,7 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
   const threeDaysFromNow = new Date();
   threeDaysFromNow.setDate(now.getDate() + 3);
 
-  const activeCount = clients.filter((c) => c.Status === 'Ativo').length;
+  const activeCount = clients.filter((c) => c.Status === 'Premium' || c.Status === 'Ativo').length;
   const expiredCount = clients.filter((c) => {
     if (c.Status === 'Vencido') return true;
     const exp = new Date(c.Vencimento);
@@ -91,7 +93,7 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
   }).length;
 
   const expiringSoonCount = clients.filter((c) => {
-    if (c.Status !== 'Ativo') return false;
+    if (c.Status !== 'Premium' && c.Status !== 'Ativo') return false;
     const exp = new Date(c.Vencimento);
     return exp >= now && exp <= threeDaysFromNow;
   }).length;
@@ -183,21 +185,22 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
 
   // Client filtering
   const filteredClients = clients.filter((c) => {
-    // Search
+    // Search com suporte seguro a ID nulo
     const matchSearch =
       c.Nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.Email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.ID.toLowerCase().includes(searchQuery.toLowerCase());
+      (c.ID || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.WhatsApp || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     if (!matchSearch) return false;
 
     // Filter
-    if (statusFilter === 'ATIVOS') return c.Status === 'Ativo';
+    if (statusFilter === 'PREMIUM') return c.Status === 'Premium' || c.Status === 'Ativo';
     if (statusFilter === 'TESTES') return c.Status === 'Teste';
     if (statusFilter === 'VENCIDOS') return c.Status === 'Vencido' || new Date(c.Vencimento) < now;
     if (statusFilter === 'AVENCER') {
       const exp = new Date(c.Vencimento);
-      return c.Status === 'Ativo' && exp >= now && exp <= threeDaysFromNow;
+      return (c.Status === 'Premium' || c.Status === 'Ativo') && exp >= now && exp <= threeDaysFromNow;
     }
     return true;
   });
@@ -344,7 +347,7 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
             
             {/* Status Tabs */}
             <div className="flex items-center gap-1 bg-[#0A0F1D] p-1 rounded-xl border border-white/5 text-xs">
-              {(['TODOS', 'ATIVOS', 'AVENCER', 'VENCIDOS', 'TESTES'] as const).map((tab) => (
+              {(['TODOS', 'PREMIUM', 'AVENCER', 'VENCIDOS', 'TESTES'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setStatusFilter(tab)}
@@ -355,7 +358,7 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                   }`}
                 >
                   {tab === 'TODOS' && 'Todos'}
-                  {tab === 'ATIVOS' && 'Ativos'}
+                  {tab === 'PREMIUM' && 'Premium'}
                   {tab === 'AVENCER' && 'A Vencer'}
                   {tab === 'VENCIDOS' && 'Vencidos'}
                   {tab === 'TESTES' && 'Testes'}
@@ -384,32 +387,34 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
             <thead>
               <tr className="bg-[#0A0F1D]/80 text-slate-400 border-b border-white/8">
                 <th className="py-3.5 px-4 font-semibold uppercase">Cliente Final</th>
-                <th className="py-3.5 px-4 font-semibold uppercase">Device ID / Aparelho</th>
+                <th className="py-3.5 px-4 font-semibold uppercase">Device ID (Aparelho)</th>
                 <th className="py-3.5 px-4 font-semibold uppercase">Usuário / Senha</th>
-                <th className="py-3.5 px-4 font-semibold uppercase">Vencimento</th>
-                <th className="py-3.5 px-4 font-semibold uppercase">Telas</th>
                 <th className="py-3.5 px-4 font-semibold uppercase">Status</th>
+                <th className="py-3.5 px-4 font-semibold uppercase">Vencimento (ISO)</th>
+                <th className="py-3.5 px-4 font-semibold uppercase">Criado em (DataCriacao)</th>
+                <th className="py-3.5 px-4 font-semibold uppercase">Telas</th>
                 <th className="py-3.5 px-4 font-semibold uppercase text-right">Ações Rápidas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-slate-300">
               {filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     Nenhum cliente encontrado com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
                 filteredClients.map((client) => {
-                  const isExpiring = new Date(client.Vencimento) <= threeDaysFromNow && client.Status === 'Ativo';
+                  const isExpiring = new Date(client.Vencimento) <= threeDaysFromNow && (client.Status === 'Premium' || client.Status === 'Ativo');
                   const isExpired = new Date(client.Vencimento) < now && client.Status !== 'Teste';
                   const whatsappMsg = saasStore.generateWhatsAppMessage(
                     client,
                     tenant.nomeApp,
                     tenant.appDownloadUrl
                   );
-                  const whatsappLink = client.WhatsApp
-                    ? `https://wa.me/${client.WhatsApp.replace(/\D/g, '')}?text=${whatsappMsg}`
+                  const cleanPhone = (client.WhatsApp || client.Telefone || '').replace(/\D/g, '');
+                  const whatsappLink = cleanPhone
+                    ? `https://wa.me/${cleanPhone}?text=${whatsappMsg}`
                     : `https://wa.me/?text=${whatsappMsg}`;
 
                   return (
@@ -418,27 +423,39 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                       {/* Cliente */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-white text-sm">{client.Nome}</div>
-                        {client.WhatsApp && (
-                          <div className="text-[11px] text-slate-400">WhatsApp: {client.WhatsApp}</div>
+                        {(client.WhatsApp || client.Telefone) && (
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            WhatsApp: {client.WhatsApp || client.Telefone}
+                          </div>
                         )}
                       </td>
 
                       {/* Device ID */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 font-mono text-cyan-300 text-[11px]">
-                          <span>{client.ID}</span>
-                          <button
-                            onClick={() => handleCopyText(client.ID, `dev-${client.id}`)}
-                            className="p-1 hover:text-white transition-colors cursor-pointer"
-                            title="Copiar Device ID"
+                        {client.ID && String(client.ID).trim() !== '' ? (
+                          <div className="flex items-center gap-1.5 font-mono text-cyan-300 text-[11px]">
+                            <span>{client.ID}</span>
+                            <button
+                              onClick={() => handleCopyText(client.ID!, `dev-${client.id}`)}
+                              className="p-1 hover:text-white transition-colors cursor-pointer"
+                              title="Copiar Device ID"
+                            >
+                              {copiedId === `dev-${client.id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#0A0F1D] border border-white/5 text-slate-400 text-[10px]"
+                            title="O ID será registrado automaticamente pelo aparelho físico (TV Box/Celular) ao se conectar"
                           >
-                            {copiedId === `dev-${client.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5 text-slate-500" />
-                            )}
-                          </button>
-                        </div>
+                            <Clock className="w-3 h-3 text-cyan-400" />
+                            <span className="font-mono">Aguardando Aparelho</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Usuário / Senha */}
@@ -447,32 +464,57 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                         <div className="font-mono text-[11px] text-slate-500">Senha: {client.Senha}</div>
                       </td>
 
+                      {/* Status */}
+                      <td className="py-3.5 px-4">
+                        {client.Status === 'Premium' || client.Status === 'Ativo' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                            <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                            PREMIUM
+                          </span>
+                        ) : client.Status === 'Teste' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                            TESTE
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/20">
+                            {client.Status}
+                          </span>
+                        )}
+                      </td>
+
                       {/* Vencimento */}
                       <td className="py-3.5 px-4 font-mono tabular-nums">
-                        <div className={`flex items-center gap-1 ${
+                        <div className={`${
                           isExpired ? 'text-rose-400 font-bold' : isExpiring ? 'text-amber-400 font-bold' : 'text-slate-200'
                         }`}>
-                          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                          <span>{client.Vencimento}</span>
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="text-xs">{new Date(client.Vencimento).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 truncate max-w-[130px] font-mono" title={client.Vencimento}>
+                            {client.Vencimento}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Criado em (DataCriacao) */}
+                      <td className="py-3.5 px-4 font-mono">
+                        <div className="text-xs text-slate-300">
+                          {client.DataCriacao || client.dataCriacao
+                            ? new Date(client.DataCriacao || client.dataCriacao!).toLocaleDateString('pt-BR')
+                            : '-'}
+                        </div>
+                        <div
+                          className="text-[10px] text-slate-500 truncate max-w-[120px]"
+                          title={client.DataCriacao || client.dataCriacao || ''}
+                        >
+                          {client.DataCriacao || client.dataCriacao || 'Pendente'}
                         </div>
                       </td>
 
                       {/* Telas */}
                       <td className="py-3.5 px-4">
                         <span className="font-mono">{client.Limite} tela(s)</span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          client.Status === 'Ativo'
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : client.Status === 'Teste'
-                            ? 'bg-purple-500/10 text-purple-400'
-                            : 'bg-rose-500/10 text-rose-400'
-                        }`}>
-                          {client.Status}
-                        </span>
                       </td>
 
                       {/* Ações */}
@@ -560,16 +602,11 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">WhatsApp para Envio</label>
-                <input
-                  type="text"
-                  value={newClientForm.WhatsApp}
-                  onChange={(e) => setNewClientForm({ ...newClientForm, WhatsApp: e.target.value })}
-                  placeholder="5511988887777"
-                  className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                />
-              </div>
+              <InternationalPhoneInput
+                value={newClientForm.WhatsApp}
+                onChange={(fullNum) => setNewClientForm({ ...newClientForm, WhatsApp: fullNum })}
+                label="WhatsApp do Cliente (Qualquer País / DDI)"
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -595,6 +632,17 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                     className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Informação sobre Status Premium e Device ID */}
+              <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Assinatura Automática PREMIUM</span>
+                </div>
+                <p className="text-slate-300">
+                  O cliente será criado como <strong className="text-emerald-400">Premium</strong> com data de vencimento e criação no formato ISO. O <strong className="text-cyan-300">Device ID</strong> não precisa ser digitado: o aparelho do usuário registra seu próprio ID físico no 1º acesso.
+                </p>
               </div>
 
               {/* Seletor de Plano & Consumo de Créditos */}
@@ -648,7 +696,7 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                   disabled={currentReseller.saldoCreditos < newClientForm.meses}
                   className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-bold text-xs rounded-xl cursor-pointer"
                 >
-                  Confirmar e Ativar
+                  Confirmar e Ativar Premium
                 </button>
               </div>
             </form>
@@ -689,16 +737,11 @@ export const ResellerView: React.FC<ResellerViewProps> = ({ tenant, reseller }) 
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">WhatsApp</label>
-                <input
-                  type="text"
-                  value={testForm.WhatsApp}
-                  onChange={(e) => setTestForm({ ...testForm, WhatsApp: e.target.value })}
-                  placeholder="5511999998888"
-                  className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                />
-              </div>
+              <InternationalPhoneInput
+                value={testForm.WhatsApp}
+                onChange={(fullNum) => setTestForm({ ...testForm, WhatsApp: fullNum })}
+                label="WhatsApp para Envio (Qualquer País / DDI)"
+              />
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Tempo do Teste</label>

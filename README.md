@@ -71,7 +71,7 @@ Para testar imediatamente todos os 3 níveis, você pode usar os botões de **"A
 
 | Nível | Papel | Email | Senha | Destaques |
 |---|---|---|---|---|
-| **1** | Super Admin | `admin@streammaster.com` | `123` | Visão de toda a infraestrutura e donos |
+| **1** | Super Admin Dono | `awina1051@gmail.com` | `12345678` | Dono da plataforma e infraestrutura SaaS |
 | **2** | Dono (CINEFP TV) | `roberto@cinefp.com` | `123` | Marca Ciano (`#00E5FF`), 2 revendedores |
 | **2** | Dono (VIP PLAY) | `carla@vipplay.tv` | `123` | Marca Dourada (`#FFC107`), Baserow 1166 |
 | **3** | Revendedor Lucas | `lucas@revendacine.com` | `123` | Pertence ao CINEFP TV, 26 créditos |
@@ -81,9 +81,16 @@ Para testar imediatamente todos os 3 níveis, você pode usar os botões de **"A
 
 ---
 
-## 📡 Integração com a API do Baserow
+## 📡 Configuração Oficial do Baserow Master (Super Admin)
 
-A tabela no Baserow do Dono do App (padrão `1165`) segue a estrutura de campos especificada:
+As seguintes tabelas e credenciais do desenvolvedor foram integradas ao sistema:
+- **URL Base:** `http://31.220.72.235:8080/`
+- **Token do Super Admin:** `Mu9bhoLo59fRYoyNOgSjFaxb6sjqT9sj`
+- **Tabela Tenant (Inquilinos):** `1575`
+- **Tabela Revendedor (Parceiros):** `1574`
+- **Tabela Usuários (Clientes Finais do Streaming):** `889`
+
+### Estrutura de Campos da Tabela Usuários (889):
 - `ID`: Device ID do aparelho (ex: `05e859593bcb0110`)
 - `Nome`: Nome do cliente final
 - `Email`: Email ou login de acesso
@@ -94,4 +101,4 @@ A tabela no Baserow do Dono do App (padrão `1165`) segue a estrutura de campos 
 - `RevendedorId`: UUID do Revendedor que cadastrou o cliente
 - `CriadoPor`: Nome do revendedor ou `"DONO"`
 
-O sistema realiza as chamadas REST para `http://31.220.72.235:8080/api/database/rows/table/{TABLE_ID}/?user_field_names=true` com header `Authorization: Token {TOKEN}`. Caso o servidor remoto esteja offline ou haja restrição de rede, o fallback dinâmico em memória garante disponibilidade contínua e sem interrupções.
+No Painel do Super Admin, você pode clicar no botão **"Testar Conexão das 3 Tabelas"** para verificar em tempo real o status e a latência de resposta de cada uma das tabelas `1575`, `1574` e `889`.

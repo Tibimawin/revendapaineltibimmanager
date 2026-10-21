@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AuthUser, Tenant } from './types';
+import { AuthUser } from './types';
 import { saasStore } from './services/storage';
 import { Navbar } from './components/Navbar';
 import { LoginView } from './components/LoginView';
@@ -10,7 +10,6 @@ import { PixModal } from './components/PixModal';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => saasStore.getCurrentUser());
-  const [allTenants, setAllTenants] = useState<Tenant[]>(() => saasStore.getAllTenants());
   const [isPixModalOpen, setIsPixModalOpen] = useState(false);
   const [urlSlug, setUrlSlug] = useState<string | null>(null);
 
@@ -31,7 +30,6 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = saasStore.subscribe(() => {
       setCurrentUser(saasStore.getCurrentUser());
-      setAllTenants(saasStore.getAllTenants());
     });
     return unsubscribe;
   }, []);
@@ -41,14 +39,8 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  const handleSelectPersona = (role: 'SUPER_ADMIN' | 'TENANT_OWNER' | 'RESELLER', id?: string) => {
-    if (role === 'SUPER_ADMIN') {
-      saasStore.login('admin@streammaster.com');
-    } else if (role === 'TENANT_OWNER' && id) {
-      saasStore.impersonateTenant(id);
-    } else if (role === 'RESELLER' && id) {
-      saasStore.impersonateReseller(id);
-    }
+  const handleStopImpersonation = () => {
+    saasStore.stopImpersonation();
   };
 
   const handleImpersonateTenant = (tenantId: string) => {
@@ -59,7 +51,7 @@ export default function App() {
     saasStore.impersonateReseller(resellerId);
   };
 
-  // Se não estiver logado, exibe a tela de login
+  // Se não estiver logado, exibe a tela de login profissional sem atalhos
   if (!currentUser) {
     return (
       <LoginView
@@ -80,14 +72,13 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenPixModal={() => setIsPixModalOpen(true)}
-        onSelectPersona={handleSelectPersona}
-        allTenants={allTenants}
+        onStopImpersonation={handleStopImpersonation}
       />
 
       {/* Main Viewport Container (1440px max-w standard) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         
-        {/* Nível 1: Super Admin */}
+        {/* Nível 1: Super Admin (acesso exclusivo awina1051@gmail.com) */}
         {currentUser.role === 'SUPER_ADMIN' && (
           <SuperAdminView onImpersonateTenant={handleImpersonateTenant} />
         )}
@@ -100,7 +91,7 @@ export default function App() {
           />
         )}
 
-        {/* Nível 3: Revendedor */}
+        {/* Nível 3: Revendedor (Totalmente isolado do painel admin) */}
         {currentUser.role === 'RESELLER' && tenant && reseller && (
           <ResellerView
             tenant={tenant}
@@ -110,20 +101,30 @@ export default function App() {
 
       </main>
 
-      {/* Footer Minimalista e Limpo */}
+      {/* Footer Minimalista e Discreto */}
       <footer className="w-full border-t border-white/5 py-4 px-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
             {currentUser.role === 'SUPER_ADMIN' 
-              ? 'StreamMaster SaaS Multi-Tenant Engine' 
-              : `${tenant?.nomeApp || 'Streaming'} · Todos os direitos reservados`}
+              ? 'StreamMaster SaaS Multi-Tenant Engine · Super Admin' 
+              : `${tenant?.nomeApp || 'Sistema'} · Todos os direitos reservados`}
           </div>
           <div className="flex items-center gap-4 text-[11px] text-slate-600">
-            <span>Isolamento Multi-Tenant</span>
-            <span>·</span>
-            <span>Baserow REST API</span>
-            <span>·</span>
-            <span>Transações Atômicas de Créditos</span>
+            {currentUser.role === 'SUPER_ADMIN' ? (
+              <>
+                <span>Isolamento Multi-Tenant</span>
+                <span>·</span>
+                <span>Baserow REST API</span>
+                <span>·</span>
+                <span>Transações Atômicas de Créditos</span>
+              </>
+            ) : (
+              <>
+                <span>Conexão Segura SSL</span>
+                <span>·</span>
+                <span>Portal Autorizado</span>
+              </>
+            )}
           </div>
         </div>
       </footer>

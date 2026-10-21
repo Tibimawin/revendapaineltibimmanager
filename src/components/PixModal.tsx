@@ -40,7 +40,10 @@ export const PixModal: React.FC<PixModalProps> = ({
     `Segue o comprovante em anexo para liberação do saldo!`
   );
 
-  const whatsappLink = `https://wa.me/${tenant.whatsapp.replace(/\D/g, '')}?text=${whatsappMessage}`;
+  const cleanTenantWhatsApp = (tenant.whatsapp || '').replace(/\D/g, '');
+  const whatsappLink = cleanTenantWhatsApp 
+    ? `https://wa.me/${cleanTenantWhatsApp}?text=${whatsappMessage}`
+    : `https://wa.me/?text=${whatsappMessage}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">

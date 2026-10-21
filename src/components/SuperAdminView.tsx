@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import { Tenant } from '../types';
 import { saasStore } from '../services/storage';
-import { DynamicBaserowClient } from '../services/baserowClient';
+import { DynamicBaserowClient, SuperAdminBaserowConfig } from '../services/baserowClient';
+import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { 
   Users, 
   Tv, 
-  Layers, 
   Activity, 
   Plus, 
-  Key, 
   Database, 
-  ExternalLink, 
   CheckCircle2, 
   XCircle, 
   RefreshCw, 
@@ -18,6 +16,9 @@ import {
   AlertCircle,
   Coins,
   Calendar,
+  Key,
+  ShieldCheck,
+  Settings,
   X
 } from 'lucide-react';
 
@@ -28,10 +29,24 @@ interface SuperAdminViewProps {
 export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTenant }) => {
   const [tenants, setTenants] = useState<Tenant[]>(() => saasStore.getAllTenants());
   const [stats, setStats] = useState(() => saasStore.getGlobalStats());
+  const [masterConfig, setMasterConfig] = useState<SuperAdminBaserowConfig>(() =>
+    saasStore.getMasterBaserowConfig()
+  );
+
+  // Modals & testing
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [testingTenantId, setTestingTenantId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string; latency?: number } | null>(null);
+  
+  // Master 3-tables test
+  const [isTestingMasterTables, setIsTestingMasterTables] = useState(false);
+  const [masterTestResult, setMasterTestResult] = useState<any | null>(null);
+
+  // Sincronização direta de dados reais
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -43,18 +58,22 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
     slug: '',
     logoUrl: '',
     corPrimaria: '#00E5FF',
-    baserowUrl: 'http://31.220.72.235:8080/',
-    baserowToken: '',
-    baserowTableUsuarios: '1165',
+    baserowUrl: masterConfig.baserowUrl || 'http://31.220.72.235:8080/',
+    baserowToken: masterConfig.token || 'Mu9bhoLo59fRYoyNOgSjFaxb6sjqT9sj',
+    baserowTableUsuarios: masterConfig.tableUsuariosDefault || '889',
     chavePix: '',
     valorCreditoUnitario: 15.0,
     appDownloadUrl: '',
-    vencimentoAssinatura: '2026-12-31',
+    vencimentoAssinatura: '2027-12-31',
   });
+
+  // Config Form State
+  const [tempConfig, setTempConfig] = useState({ ...masterConfig });
 
   const refreshData = () => {
     setTenants(saasStore.getAllTenants());
     setStats(saasStore.getGlobalStats());
+    setMasterConfig(saasStore.getMasterBaserowConfig());
   };
 
   const handleOpenCreate = () => {
@@ -68,13 +87,13 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
       slug: '',
       logoUrl: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=150',
       corPrimaria: '#00E5FF',
-      baserowUrl: 'http://31.220.72.235:8080/',
-      baserowToken: `token-${Date.now().toString(36)}`,
-      baserowTableUsuarios: '1165',
+      baserowUrl: masterConfig.baserowUrl || 'http://31.220.72.235:8080/',
+      baserowToken: masterConfig.token || 'Mu9bhoLo59fRYoyNOgSjFaxb6sjqT9sj',
+      baserowTableUsuarios: masterConfig.tableUsuariosDefault || '889',
       chavePix: '',
       valorCreditoUnitario: 15.0,
       appDownloadUrl: '',
-      vencimentoAssinatura: '2026-12-31',
+      vencimentoAssinatura: '2027-12-31',
     });
     setIsModalOpen(true);
   };
@@ -92,7 +111,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
       corPrimaria: t.corPrimaria,
       baserowUrl: t.baserowUrl,
       baserowToken: t.baserowToken,
-      baserowTableUsuarios: t.baserowTableUsuarios,
+      baserowTableUsuarios: t.baserowTableUsuarios || '889',
       chavePix: t.chavePix,
       valorCreditoUnitario: t.valorCreditoUnitario,
       appDownloadUrl: t.appDownloadUrl,
@@ -113,6 +132,13 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
     }
     setIsModalOpen(false);
     refreshData();
+  };
+
+  const handleSaveMasterConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    saasStore.updateMasterBaserowConfig(tempConfig);
+    setMasterConfig({ ...tempConfig });
+    setIsConfigModalOpen(false);
   };
 
   const handleToggleStatus = (tenant: Tenant) => {
@@ -143,6 +169,36 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
     setTestingTenantId(null);
   };
 
+  const handleTestMaster3Tables = async () => {
+    setIsTestingMasterTables(true);
+    setMasterTestResult(null);
+    try {
+      const res = await saasStore.testMasterBaserowTables();
+      setMasterTestResult(res);
+    } catch (err: any) {
+      setMasterTestResult({
+        allOk: false,
+        error: err.message,
+      });
+    } finally {
+      setIsTestingMasterTables(false);
+    }
+  };
+
+  const handleSyncFromBaserow = async () => {
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      const res = await saasStore.syncFromBaserowDirectly();
+      setSyncFeedback(res);
+      refreshData();
+    } catch (err: any) {
+      setSyncFeedback({ success: false, message: `Erro ao sincronizar: ${err.message}` });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       
@@ -150,25 +206,196 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-white/8">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400 uppercase tracking-widest">
+            <ShieldCheck className="w-4 h-4" />
             <span>Infraestrutura SaaS Multi-Tenant</span>
             <span>·</span>
-            <span>Super Administrador</span>
+            <span>Super Administrador (Desenvolvedor)</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
             Painel Geral da Plataforma
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Gerencie os Donos de Aplicativos, credenciais Baserow, assinaturas e monitore o fluxo de revenda em toda a rede.
+            Gerencie os Donos de Aplicativos, controle as tabelas centrais do Baserow e monitore toda a rede de revenda.
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 transition-all cursor-pointer whitespace-nowrap self-start md:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Cadastrar Novo Dono de App</span>
-        </button>
+        <div className="flex items-center gap-2.5 self-start md:self-auto">
+          <button
+            onClick={() => {
+              setTempConfig(saasStore.getMasterBaserowConfig());
+              setIsConfigModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-[#182238] hover:bg-[#202d4a] text-slate-200 border border-white/10 font-bold text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap"
+          >
+            <Settings className="w-4 h-4 text-cyan-400" />
+            <span>Configurar Baserow</span>
+          </button>
+
+          <button
+            onClick={handleOpenCreate}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 transition-all cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Cadastrar Novo Dono de App</span>
+          </button>
+        </div>
+      </div>
+
+      {/* BOX MASTER: Integração do Desenvolvedor com Baserow (Tabelas 1575, 1574, 889) */}
+      <div className="rounded-2xl p-5 sm:p-6 bg-gradient-to-r from-[#11192C] via-[#16223b] to-[#11192C] border border-cyan-500/30 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-wider">
+              <Database className="w-4 h-4" />
+              <span>Instância Master do Desenvolvedor (Baserow Oficial)</span>
+            </div>
+            <div className="text-sm font-semibold text-white">
+              Servidor: <span className="font-mono text-cyan-300">{masterConfig.baserowUrl}</span>
+            </div>
+            
+            {/* Badges das 3 Tabelas */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-mono">
+              <div className="bg-[#0A0F1D] px-2.5 py-1 rounded-lg border border-white/10 text-slate-300">
+                <span className="text-slate-500 font-sans">Tenants:</span> <strong className="text-cyan-400">Tabela {masterConfig.tableTenants}</strong>
+              </div>
+              <div className="bg-[#0A0F1D] px-2.5 py-1 rounded-lg border border-white/10 text-slate-300">
+                <span className="text-slate-500 font-sans">Revendedores:</span> <strong className="text-blue-400">Tabela {masterConfig.tableResellers}</strong>
+              </div>
+              <div className="bg-[#0A0F1D] px-2.5 py-1 rounded-lg border border-white/10 text-slate-300">
+                <span className="text-slate-500 font-sans">Usuários (Clientes):</span> <strong className="text-emerald-400">Tabela {masterConfig.tableUsuariosDefault}</strong>
+              </div>
+              <div className="bg-[#0A0F1D] px-2.5 py-1 rounded-lg border border-white/10 text-slate-300">
+                <span className="text-slate-500 font-sans">Token:</span> <strong className="text-amber-300">{masterConfig.token.slice(0, 10)}•••••</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={handleSyncFromBaserow}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-[#0A0F1D] hover:bg-[#152238] text-cyan-300 border border-cyan-500/30 font-bold text-xs rounded-xl shadow-lg transition-all cursor-pointer whitespace-nowrap"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Puxar Dados Reais'}</span>
+            </button>
+
+            <button
+              onClick={handleTestMaster3Tables}
+              disabled={isTestingMasterTables}
+              className="flex items-center gap-2 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs rounded-xl shadow-lg transition-all cursor-pointer whitespace-nowrap"
+            >
+              <RefreshCw className={`w-4 h-4 ${isTestingMasterTables ? 'animate-spin' : ''}`} />
+              <span>{isTestingMasterTables ? 'Testando 3 Tabelas...' : 'Testar Conexão das 3 Tabelas'}</span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* Feedback de Sincronização */}
+        {syncFeedback && (
+          <div className={`mt-4 p-3.5 rounded-xl border flex items-center justify-between text-xs ${
+            syncFeedback.success 
+              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200' 
+              : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{syncFeedback.message}</span>
+            </div>
+            <button 
+              onClick={() => setSyncFeedback(null)} 
+              className="text-slate-400 hover:text-white p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Feedback do Teste das 3 Tabelas */}
+        {masterTestResult && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+              Status da Conexão com suas Tabelas no Baserow:
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              
+              {/* Tenant 1575 */}
+              <div className={`p-3 rounded-xl border ${
+                masterTestResult.results?.tenants?.success 
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' 
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+              }`}>
+                <div className="font-bold flex items-center gap-1.5">
+                  {masterTestResult.results?.tenants?.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                  )}
+                  <span>Tabela Tenant ({masterConfig.tableTenants})</span>
+                </div>
+                <div className="mt-1 text-[11px] opacity-90">
+                  {masterTestResult.results?.tenants?.message}
+                </div>
+                {masterTestResult.results?.tenants?.latencyMs && (
+                  <div className="mt-1 text-[10px] font-mono opacity-75">
+                    Latência: {masterTestResult.results.tenants.latencyMs}ms
+                  </div>
+                )}
+              </div>
+
+              {/* Revendedor 1574 */}
+              <div className={`p-3 rounded-xl border ${
+                masterTestResult.results?.resellers?.success 
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' 
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+              }`}>
+                <div className="font-bold flex items-center gap-1.5">
+                  {masterTestResult.results?.resellers?.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                  )}
+                  <span>Tabela Revendedor ({masterConfig.tableResellers})</span>
+                </div>
+                <div className="mt-1 text-[11px] opacity-90">
+                  {masterTestResult.results?.resellers?.message}
+                </div>
+                {masterTestResult.results?.resellers?.latencyMs && (
+                  <div className="mt-1 text-[10px] font-mono opacity-75">
+                    Latência: {masterTestResult.results.resellers.latencyMs}ms
+                  </div>
+                )}
+              </div>
+
+              {/* Usuários 889 */}
+              <div className={`p-3 rounded-xl border ${
+                masterTestResult.results?.usuarios?.success 
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' 
+                  : 'bg-amber-950/40 border-amber-500/30 text-amber-200'
+              }`}>
+                <div className="font-bold flex items-center gap-1.5">
+                  {masterTestResult.results?.usuarios?.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                  )}
+                  <span>Tabela Usuários ({masterConfig.tableUsuariosDefault})</span>
+                </div>
+                <div className="mt-1 text-[11px] opacity-90">
+                  {masterTestResult.results?.usuarios?.message}
+                </div>
+                {masterTestResult.results?.usuarios?.latencyMs && (
+                  <div className="mt-1 text-[10px] font-mono opacity-75">
+                    Latência: {masterTestResult.results.usuarios.latencyMs}ms
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
       </div>
 
       {/* KPI Cards Strip */}
@@ -185,7 +412,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
             <span className="text-xs font-sans text-slate-400 font-normal ml-2">/ {stats.totalTenants} ativos</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400">
-            Inquilinos com marcas independentes
+            Inquilinos na tabela {masterConfig.tableTenants}
           </div>
         </div>
 
@@ -199,7 +426,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
             {stats.totalResellers}
           </div>
           <div className="mt-2 text-[11px] text-slate-400">
-            Parceiros cadastrados pelos Donos
+            Parceiros na tabela {masterConfig.tableResellers}
           </div>
         </div>
 
@@ -214,7 +441,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
             <span className="text-xs font-sans text-slate-400 font-normal ml-2">/ {stats.totalClients} totais</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400">
-            Sincronizados via Baserow REST
+            Registrados na tabela {masterConfig.tableUsuariosDefault}
           </div>
         </div>
 
@@ -234,7 +461,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
 
       </div>
 
-      {/* Alerta de Diagnóstico Baserow se houver teste recente */}
+      {/* Alerta de Diagnóstico Baserow se houver teste recente de tenant */}
       {testResult && (
         <div className={`p-4 rounded-xl border flex items-start justify-between gap-3 ${
           testResult.success 
@@ -249,7 +476,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
             )}
             <div>
               <div className="font-semibold text-xs uppercase tracking-wider">
-                Diagnóstico de Conexão Baserow:
+                Diagnóstico de Conexão do Dono de App:
               </div>
               <div className="text-sm mt-0.5">{testResult.message}</div>
               {testResult.latency && (
@@ -294,7 +521,28 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-slate-300">
-              {tenants.map((tenant) => {
+              {tenants.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center">
+                    <div className="flex flex-col items-center justify-center max-w-md mx-auto text-center">
+                      <div className="p-3 bg-white/5 rounded-2xl mb-3 text-cyan-400">
+                        <Database className="w-8 h-8" />
+                      </div>
+                      <div className="text-white font-bold text-sm">Nenhum Dono de App cadastrado na Tabela 1575</div>
+                      <div className="text-slate-400 text-xs mt-1">
+                        Sua tabela 1575 está vazia no Baserow. Cadastre o seu primeiro cliente de aplicativo para começar a gerenciar sua rede de streaming!
+                      </div>
+                      <button
+                        onClick={handleOpenCreate}
+                        className="mt-4 px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs rounded-xl shadow-lg transition-all cursor-pointer"
+                      >
+                        + Cadastrar Primeiro Dono de App
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                tenants.map((tenant) => {
                 const isTesting = testingTenantId === tenant.id;
                 const isExpired = new Date(tenant.vencimentoAssinatura) < new Date();
 
@@ -328,7 +576,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-1.5 font-mono text-[11px] text-cyan-300">
                         <Database className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Tabela: {tenant.baserowTableUsuarios || '1165'}</span>
+                        <span>Tabela: {tenant.baserowTableUsuarios || '889'}</span>
                       </div>
                       <div className="text-slate-500 font-mono text-[10px] truncate max-w-[200px]" title={tenant.baserowUrl}>
                         {tenant.baserowUrl}
@@ -401,11 +649,121 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
 
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Modal: Configurações Master do Desenvolvedor (Tabelas 1575, 1574, 889) */}
+      {isConfigModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-lg bg-[#11192C] border border-white/10 rounded-2xl shadow-2xl p-6 text-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <Settings className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">Configurações Baserow do Desenvolvedor</h3>
+              </div>
+              <button
+                onClick={() => setIsConfigModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMasterConfig} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                  URL da Instância Baserow
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tempConfig.baserowUrl}
+                  onChange={(e) => setTempConfig({ ...tempConfig, baserowUrl: e.target.value })}
+                  placeholder="http://31.220.72.235:8080/"
+                  className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-cyan-300 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                  Token do Baserow (Super Admin)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tempConfig.token}
+                  onChange={(e) => setTempConfig({ ...tempConfig, token: e.target.value })}
+                  placeholder="Mu9bhoLo59fRYoyNOgSjFaxb6sjqT9sj"
+                  className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-amber-300 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                    Tabela Tenant
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={tempConfig.tableTenants}
+                    onChange={(e) => setTempConfig({ ...tempConfig, tableTenants: e.target.value })}
+                    placeholder="1575"
+                    className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                    Tabela Revendedor
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={tempConfig.tableResellers}
+                    onChange={(e) => setTempConfig({ ...tempConfig, tableResellers: e.target.value })}
+                    placeholder="1574"
+                    className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                    Tabela Usuários
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={tempConfig.tableUsuariosDefault}
+                    onChange={(e) => setTempConfig({ ...tempConfig, tableUsuariosDefault: e.target.value })}
+                    placeholder="889"
+                    className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/10 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConfigModalOpen(false)}
+                  className="px-3 py-2 text-xs text-slate-400 hover:text-white"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs rounded-xl"
+                >
+                  Salvar Configurações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Cadastro / Edição de Dono do App */}
       {isModalOpen && (
@@ -418,7 +776,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
                   {editingTenant ? 'Editar Dados do Dono de App' : 'Cadastrar Novo Dono de Aplicativo'}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Configure o aplicativo white-label, a tabela do Baserow e as regras financeiras.
+                  Configure o aplicativo white-label, a tabela de usuários (padrão 889) e as regras financeiras.
                 </p>
               </div>
               <button
@@ -475,17 +833,12 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
-                    WhatsApp do Dono
-                  </label>
-                  <input
-                    type="text"
-                    required
+                <div className="sm:col-span-2">
+                  <InternationalPhoneInput
                     value={formData.whatsapp}
-                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                    placeholder="5511999998888"
-                    className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                    onChange={(fullNum) => setFormData({ ...formData, whatsapp: fullNum })}
+                    label="WhatsApp do Dono (Qualquer País / DDI)"
+                    required
                   />
                 </div>
               </div>
@@ -560,10 +913,10 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
                 </div>
               </div>
 
-              {/* Seção 3: Credenciais Baserow */}
+              {/* Seção 3: Credenciais Baserow do Dono */}
               <div className="pt-3 border-t border-white/5">
                 <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-3">
-                  Credenciais Baserow do Dono
+                  Credenciais Baserow do Dono (Tabela de Usuários)
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -590,7 +943,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
                       required
                       value={formData.baserowTableUsuarios}
                       onChange={(e) => setFormData({ ...formData, baserowTableUsuarios: e.target.value })}
-                      placeholder="1165"
+                      placeholder="889"
                       className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none"
                     />
                   </div>
@@ -605,7 +958,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
                     required
                     value={formData.baserowToken}
                     onChange={(e) => setFormData({ ...formData, baserowToken: e.target.value })}
-                    placeholder="Token JWT/Database do Baserow deste cliente"
+                    placeholder="Mu9bhoLo59fRYoyNOgSjFaxb6sjqT9sj"
                     className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none"
                   />
                 </div>

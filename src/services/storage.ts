@@ -1,6 +1,6 @@
 import { Tenant, Reseller, BaserowClient, CreditTransaction, AuthUser } from '../types';
 import { INITIAL_TENANTS, INITIAL_RESELLERS, INITIAL_CLIENTS, INITIAL_TRANSACTIONS } from './mockData';
-import { DynamicBaserowClient } from './baserowClient';
+import { DynamicBaserowClient, SuperAdminBaserowMaster, SUPER_ADMIN_DEFAULT_CONFIG, SuperAdminBaserowConfig } from './baserowClient';
 
 const STORAGE_KEYS = {
   TENANTS: 'streammaster_tenants_v1',
@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   CLIENTS: 'streammaster_clients_v1',
   TRANSACTIONS: 'streammaster_transactions_v1',
   AUTH: 'streammaster_auth_v1',
+  MASTER_BASEROW: 'streammaster_master_baserow_v1',
 };
 
 // Safe LocalStorage loader
@@ -37,6 +38,8 @@ class SaaSDataManager {
   private clients: BaserowClient[];
   private transactions: CreditTransaction[];
   private currentUser: AuthUser | null;
+  private masterBaserowConfig: SuperAdminBaserowConfig;
+  private superAdminMaster: SuperAdminBaserowMaster;
   private listeners: Set<() => void> = new Set();
 
   constructor() {
@@ -44,20 +47,23 @@ class SaaSDataManager {
     this.resellers = loadFromStorage(STORAGE_KEYS.RESELLERS, INITIAL_RESELLERS);
     this.clients = loadFromStorage(STORAGE_KEYS.CLIENTS, INITIAL_CLIENTS);
     this.transactions = loadFromStorage(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
-    
-    // Default logged in user (or restored session)
+    this.masterBaserowConfig = loadFromStorage(STORAGE_KEYS.MASTER_BASEROW, SUPER_ADMIN_DEFAULT_CONFIG);
+    this.superAdminMaster = new SuperAdminBaserowMaster(this.masterBaserowConfig);
+
+    // Expurgar dados fictícios mock gravados no localStorage de sessões anteriores
+    this.tenants = this.tenants.filter((t) => t.id !== 'tenant-cinefp-01' && t.id !== 'tenant-vipplay-02');
+    this.resellers = this.resellers.filter((r) => !r.id.startsWith('reseller-lucas') && !r.id.startsWith('reseller-marcos') && !r.id.startsWith('reseller-juliana'));
+    this.clients = this.clients.filter((c) => c.RevendedorId !== 'reseller-lucas-01' && c.tenantId !== 'tenant-cinefp-01' && c.tenantId !== 'tenant-vipplay-02');
+    this.transactions = [];
+
+    // Se o usuário não está autenticado, currentUser é estritamente null (não entra no painel)
     const savedAuth = loadFromStorage<AuthUser | null>(STORAGE_KEYS.AUTH, null);
-    if (savedAuth) {
-      this.currentUser = savedAuth;
-    } else {
-      // Default to Super Admin for immediate rich view
-      this.currentUser = {
-        id: 'super-admin-root',
-        nome: 'Super Admin Master',
-        email: 'admin@streammaster.com',
-        role: 'SUPER_ADMIN',
-      };
-    }
+    this.currentUser = savedAuth;
+
+    // Disparar sincronização automática imediata com as tabelas reais do Baserow (1575, 1574, 889)
+    setTimeout(() => {
+      this.syncFromBaserowDirectly().catch(() => {});
+    }, 50);
   }
 
   // Subscribe to changes for reactive UI
@@ -72,6 +78,7 @@ class SaaSDataManager {
     saveToStorage(STORAGE_KEYS.CLIENTS, this.clients);
     saveToStorage(STORAGE_KEYS.TRANSACTIONS, this.transactions);
     saveToStorage(STORAGE_KEYS.AUTH, this.currentUser);
+    saveToStorage(STORAGE_KEYS.MASTER_BASEROW, this.masterBaserowConfig);
     this.listeners.forEach((l) => l());
   }
 
@@ -84,12 +91,18 @@ class SaaSDataManager {
   }
 
   public login(email: string, senha?: string): { success: boolean; message?: string; user?: AuthUser } {
-    // 1. Check Super Admin
-    if (email.toLowerCase() === 'admin@streammaster.com') {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = senha?.trim() || '';
+
+    // 1. Super Admin Dono (awina1051@gmail.com / 12345678)
+    if (cleanEmail === 'awina1051@gmail.com') {
+      if (cleanPass !== '12345678') {
+        return { success: false, message: 'Senha incorreta para o Super Admin Dono.' };
+      }
       const user: AuthUser = {
         id: 'super-admin-root',
-        nome: 'Super Admin Master',
-        email: 'admin@streammaster.com',
+        nome: 'Super Admin Dono',
+        email: 'awina1051@gmail.com',
         role: 'SUPER_ADMIN',
       };
       this.currentUser = user;
@@ -97,9 +110,12 @@ class SaaSDataManager {
       return { success: true, user };
     }
 
-    // 2. Check Tenants (Dono de App)
-    const tenant = this.tenants.find((t) => t.email.toLowerCase() === email.toLowerCase());
+    // 2. Tenants (Dono de App)
+    const tenant = this.tenants.find((t) => t.email.toLowerCase() === cleanEmail);
     if (tenant) {
+      if (tenant.senha && tenant.senha !== cleanPass) {
+        return { success: false, message: 'Senha incorreta para o Dono do Aplicativo.' };
+      }
       if (tenant.status === 'BLOQUEADO') {
         return { success: false, message: 'Conta do aplicativo bloqueada. Entre em contato com a administração.' };
       }
@@ -116,9 +132,12 @@ class SaaSDataManager {
       return { success: true, user };
     }
 
-    // 3. Check Resellers (Revendedores)
-    const reseller = this.resellers.find((r) => r.email.toLowerCase() === email.toLowerCase());
+    // 3. Resellers (Revendedores)
+    const reseller = this.resellers.find((r) => r.email.toLowerCase() === cleanEmail);
     if (reseller) {
+      if (reseller.senha && reseller.senha !== cleanPass) {
+        return { success: false, message: 'Senha incorreta para o Revendedor.' };
+      }
       const parentTenant = this.tenants.find((t) => t.id === reseller.tenantId);
       if (parentTenant && parentTenant.status === 'BLOQUEADO') {
         return { success: false, message: 'O servidor deste aplicativo está temporariamente indisponível.' };
@@ -141,12 +160,13 @@ class SaaSDataManager {
       return { success: true, user };
     }
 
-    return { success: false, message: 'Credenciais inválidas. Verifique o email informado.' };
+    return { success: false, message: 'Usuário não encontrado. Verifique o email e senha digitados.' };
   }
 
   public impersonateTenant(tenantId: string): void {
     const tenant = this.tenants.find((t) => t.id === tenantId);
     if (tenant) {
+      const actor = this.currentUser;
       this.currentUser = {
         id: tenant.id,
         nome: tenant.nomeDono,
@@ -154,6 +174,11 @@ class SaaSDataManager {
         role: 'TENANT_OWNER',
         tenantId: tenant.id,
         tenant,
+        impersonatedBy: actor ? {
+          userId: actor.id,
+          role: actor.role,
+          name: actor.nome,
+        } : undefined,
       };
       this.notify();
     }
@@ -163,6 +188,7 @@ class SaaSDataManager {
     const reseller = this.resellers.find((r) => r.id === resellerId);
     if (reseller) {
       const parentTenant = this.tenants.find((t) => t.id === reseller.tenantId);
+      const actor = this.currentUser;
       this.currentUser = {
         id: reseller.id,
         nome: reseller.nome,
@@ -171,8 +197,41 @@ class SaaSDataManager {
         tenantId: reseller.tenantId,
         tenant: parentTenant,
         reseller,
+        impersonatedBy: actor ? {
+          userId: actor.id,
+          role: actor.role,
+          name: actor.nome,
+        } : undefined,
       };
       this.notify();
+    }
+  }
+
+  public stopImpersonation(): void {
+    if (!this.currentUser?.impersonatedBy) return;
+
+    const imp = this.currentUser.impersonatedBy;
+    if (imp.role === 'SUPER_ADMIN') {
+      this.currentUser = {
+        id: 'super-admin-root',
+        nome: 'Super Admin Dono',
+        email: 'awina1051@gmail.com',
+        role: 'SUPER_ADMIN',
+      };
+      this.notify();
+    } else if (imp.role === 'TENANT_OWNER') {
+      const tenant = this.tenants.find((t) => t.id === imp.userId);
+      if (tenant) {
+        this.currentUser = {
+          id: tenant.id,
+          nome: tenant.nomeDono,
+          email: tenant.email,
+          role: 'TENANT_OWNER',
+          tenantId: tenant.id,
+          tenant,
+        };
+        this.notify();
+      }
     }
   }
 
@@ -186,8 +245,45 @@ class SaaSDataManager {
   }
 
   // ==========================================
-  // SUPER ADMIN ACTIONS
+  // SUPER ADMIN & BASEROW MASTER (1575, 1574, 889)
   // ==========================================
+
+  public getMasterBaserowConfig(): SuperAdminBaserowConfig {
+    return { ...this.masterBaserowConfig };
+  }
+
+  public updateMasterBaserowConfig(updates: Partial<SuperAdminBaserowConfig>): void {
+    this.masterBaserowConfig = { ...this.masterBaserowConfig, ...updates };
+    this.superAdminMaster = new SuperAdminBaserowMaster(this.masterBaserowConfig);
+    this.notify();
+  }
+
+  public async testMasterBaserowTables() {
+    return this.superAdminMaster.testAllMasterTables();
+  }
+
+  /**
+   * Puxa todos os registros 100% REAIS das tabelas do Baserow
+   */
+  public async syncFromBaserowDirectly(): Promise<{ success: boolean; message: string; counts?: any }> {
+    const res = await this.superAdminMaster.fetchAllRealData();
+    if (res.success) {
+      this.tenants = res.tenants;
+      this.resellers = res.resellers;
+      this.clients = res.clients;
+      this.notify();
+      return {
+        success: true,
+        message: `Sincronizado com sucesso! ${res.tenants.length} Donos de App (Tabela 1575), ${res.resellers.length} Revendedores (Tabela 1574) e ${res.clients.length} Clientes Finais (Tabela 889) reais carregados do Baserow.`,
+        counts: {
+          tenants: res.tenants.length,
+          resellers: res.resellers.length,
+          clients: res.clients.length,
+        },
+      };
+    }
+    return { success: false, message: res.error || 'Falha ao sincronizar com Baserow' };
+  }
 
   public getAllTenants(): Tenant[] {
     return [...this.tenants];
@@ -201,6 +297,12 @@ class SaaSDataManager {
     };
     this.tenants.unshift(newTenant);
     this.notify();
+
+    // Sincronização automática com a tabela 1575 (Tenant) no Baserow
+    this.superAdminMaster.syncTenantToBaserow(newTenant).catch((err) => {
+      console.warn('Sync diferido com tabela 1575 de Tenants:', err);
+    });
+
     return newTenant;
   }
 
@@ -225,7 +327,7 @@ class SaaSDataManager {
     const activeTenants = this.tenants.filter((t) => t.status === 'ATIVO').length;
     const totalResellers = this.resellers.length;
     const totalClients = this.clients.length;
-    const activeClients = this.clients.filter((c) => c.Status === 'Ativo').length;
+    const activeClients = this.clients.filter((c) => c.Status === 'Premium' || c.Status === 'Ativo').length;
     
     // Total credits in circulation across all resellers
     const totalCreditsInCirculation = this.resellers.reduce((acc, r) => acc + (r.saldoCreditos || 0), 0);
@@ -272,6 +374,13 @@ class SaaSDataManager {
     }
 
     this.notify();
+
+    // Sincronização automática com a tabela 1574 (Revendedor) no Baserow
+    const parentTenant = this.tenants.find((t) => t.id === data.tenantId);
+    this.superAdminMaster.syncResellerToBaserow(newReseller, parentTenant?.nomeApp).catch((err) => {
+      console.warn('Sync diferido com tabela 1574 de Revendedores:', err);
+    });
+
     return newReseller;
   }
 
@@ -314,7 +423,7 @@ class SaaSDataManager {
   public getTenantStats(tenantId: string) {
     const resellers = this.getResellersByTenant(tenantId);
     const tenantClients = this.clients.filter((c) => c.tenantId === tenantId);
-    const activeClients = tenantClients.filter((c) => c.Status === 'Ativo').length;
+    const activeClients = tenantClients.filter((c) => c.Status === 'Premium' || c.Status === 'Ativo').length;
     const directClients = tenantClients.filter((c) => c.RevendedorId === 'DONO').length;
     const totalCreditsCirculating = resellers.reduce((acc, r) => acc + (r.saldoCreditos || 0), 0);
 
@@ -376,25 +485,31 @@ class SaaSDataManager {
       }
     }
 
-    // 2. Calcular data de vencimento
+    // 2. Formato exato ISO 8601 exigido pelo app (ex: 2026-10-28T06:45:39.809Z)
+    const nowIso = new Date().toISOString();
     const expirationDate = this.calculateNewExpirationDate(null, meses * 30);
-    const deviceId = params.ID || this.generateRandomDeviceId();
+    
+    // REGRA FUNDAMENTAL: NUNCA criar cliente com ID gerado pelo sistema.
+    // O ID é atribuído exclusivamente pelo aparelho físico (TV Box/Celular) quando ele se conecta.
+    const deviceId = params.ID && params.ID.trim() !== '' ? params.ID.trim() : null;
 
-    // 3. Montar cliente
+    // 3. Montar cliente com Status 'Premium', DataCriacao ISO e Vencimento ISO
     const newClient: BaserowClient = {
       id: Math.floor(1000 + Math.random() * 90000),
       ID: deviceId,
       Nome,
       Email,
       Senha,
-      WhatsApp,
-      Status: 'Ativo',
-      Vencimento: expirationDate,
+      WhatsApp: WhatsApp || null,
+      Telefone: WhatsApp || null,
+      Status: 'Premium', // Nunca "Ativo"
+      Vencimento: expirationDate, // ex: 2026-10-28T06:45:39.809Z
+      DataCriacao: nowIso, // ex: 2026-10-28T06:45:39.809Z
+      dataCriacao: nowIso,
       Limite: params.Limite || 1,
       RevendedorId: revendedorId,
       CriadoPor: criadoPorNome,
       tenantId,
-      dataCriacao: new Date().toISOString(),
     };
 
     // 4. Executar transação de crédito se for revendedor
@@ -407,8 +522,8 @@ class SaaSDataManager {
         revendedorNome: reseller.nome,
         tipo: 'CONSUMO_NOVO',
         quantidade: -creditsNeeded,
-        descricao: `Criação do cliente: ${Nome} (${meses} mês/meses)`,
-        dataCriacao: new Date().toISOString(),
+        descricao: `Criação do cliente Premium: ${Nome} (${meses} mês/meses)`,
+        dataCriacao: nowIso,
       });
     }
 
@@ -416,7 +531,7 @@ class SaaSDataManager {
     this.clients.unshift(newClient);
     this.notify();
 
-    // 6. Tentar despachar em background para a API real do Baserow
+    // 6. Sincronizar com a API real do Baserow
     const tenant = this.tenants.find((t) => t.id === tenantId);
     if (tenant) {
       const baserow = new DynamicBaserowClient(tenant);
@@ -429,7 +544,7 @@ class SaaSDataManager {
   }
 
   /**
-   * Geração de Teste Grátis (2h ou 4h) sem consumir créditos
+   * Geração de Teste Grátis (2h ou 4h) sem consumir créditos e com formato ISO
    */
   public async createFreeTest(
     params: {
@@ -462,22 +577,26 @@ class SaaSDataManager {
     const cleanName = Nome.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const login = `teste.${cleanName || 'stream'}${testCode.slice(0, 3)}@app.com`;
     const senha = `test${testCode.slice(3)}`;
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const expIso = new Date(now.getTime() + horas * 60 * 60 * 1000).toISOString();
 
     const testClient: BaserowClient = {
       id: Math.floor(1000 + Math.random() * 90000),
-      ID: this.generateRandomDeviceId(),
+      ID: null, // Sem ID no teste: o aparelho atribui ao conectar
       Nome: `${Nome} (Teste ${horas}h)`,
       Email: login,
       Senha: senha,
-      WhatsApp,
+      WhatsApp: WhatsApp || null,
+      Telefone: WhatsApp || null,
       Status: 'Teste',
-      Vencimento: today,
+      Vencimento: expIso,
+      DataCriacao: nowIso,
+      dataCriacao: nowIso,
       Limite: 1,
       RevendedorId: revendedorId,
       CriadoPor: criadoPorNome,
       tenantId,
-      dataCriacao: new Date().toISOString(),
     };
 
     this.clients.unshift(testClient);
@@ -497,8 +616,7 @@ class SaaSDataManager {
 
   /**
    * Renovação inteligente de cliente (+30, 90, 180 ou 365 dias)
-   * Se vencimento for futuro: vencimentoAtual + dias
-   * Se já estiver vencido: hoje + dias
+   * Vencimento e Status atualizado para 'Premium'
    */
   public async renewClient(
     clientId: string | number,
@@ -530,15 +648,15 @@ class SaaSDataManager {
         revendedorNome: reseller.nome,
         tipo: 'CONSUMO_RENOVACAO',
         quantidade: -creditsNeeded,
-        descricao: `Renovação do cliente: ${client.Nome} (+${meses * 30} dias)`,
+        descricao: `Renovação Premium: ${client.Nome} (+${meses * 30} dias)`,
         dataCriacao: new Date().toISOString(),
       });
     }
 
-    // Calcular nova data de vencimento inteligente
+    // Calcular nova data de vencimento inteligente em ISO 8601
     const newExpiration = this.calculateNewExpirationDate(client.Vencimento, meses * 30);
     client.Vencimento = newExpiration;
-    client.Status = 'Ativo';
+    client.Status = 'Premium'; // Sempre Premium na renovação
 
     this.notify();
 
@@ -548,7 +666,7 @@ class SaaSDataManager {
       const baserow = new DynamicBaserowClient(tenant);
       baserow.updateClientInBaserow(client.id, {
         Vencimento: newExpiration,
-        Status: 'Ativo',
+        Status: 'Premium',
       }).catch((err) => {
         console.warn('Sync Baserow remoto de renovação diferido:', err);
       });
@@ -566,30 +684,20 @@ class SaaSDataManager {
   // HELPERS
   // ==========================================
 
-  public calculateNewExpirationDate(currentExpStr: string | null, daysToAdd: number): string {
+  public calculateNewExpirationDate(currentExpStr: string | null | undefined, daysToAdd: number): string {
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
     let baseDate = now;
+
     if (currentExpStr) {
-      const [year, month, day] = currentExpStr.split('-').map(Number);
-      if (year && month && day) {
-        const parsed = new Date(year, month - 1, day);
-        parsed.setHours(0, 0, 0, 0);
-        // Se a data de vencimento for futura, adiciona a partir dela!
-        if (parsed > now) {
-          baseDate = parsed;
-        }
+      const parsed = new Date(currentExpStr);
+      // Se parsed for válido e for data futura, adiciona a partir de parsed
+      if (!isNaN(parsed.getTime()) && parsed > now) {
+        baseDate = parsed;
       }
     }
 
-    const result = new Date(baseDate);
-    result.setDate(result.getDate() + daysToAdd);
-
-    const y = result.getFullYear();
-    const m = String(result.getMonth() + 1).padStart(2, '0');
-    const d = String(result.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    const result = new Date(baseDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+    return result.toISOString(); // Formato exato do app: 2026-10-28T06:45:39.809Z
   }
 
   public generateRandomDeviceId(): string {
@@ -616,15 +724,27 @@ class SaaSDataManager {
     const isTest = client.Status === 'Teste';
     const link = downloadUrl || 'https://cinefp.app/download';
 
+    let formattedDate = client.Vencimento;
+    try {
+      const d = new Date(client.Vencimento);
+      if (!isNaN(d.getTime())) {
+        formattedDate = `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+      }
+    } catch {}
+
+    const deviceLine = client.ID && String(client.ID).trim() !== ''
+      ? `📱 *Device ID do Aparelho:* \`${client.ID}\`\n`
+      : `📱 *Instalação do Aparelho:* Abra o aplicativo e entre com seu Usuário e Senha abaixo. Seu aparelho será vinculado automaticamente no 1º acesso!\n`;
+
     if (isTest) {
       return encodeURIComponent(
         `🎬 *SEU TESTE GRÁTIS NO ${appName.toUpperCase()} ESTÁ LIBERADO!*\n\n` +
         `Olá, *${client.Nome}*! Seguem os seus dados de acesso:\n\n` +
-        `📱 *Device ID / Aparelho:* \`${client.ID}\`\n` +
+        deviceLine +
         `👤 *Usuário:* \`${client.Email}\`\n` +
         `🔑 *Senha:* \`${client.Senha}\`\n` +
         `📺 *Telas Permitidas:* ${client.Limite}\n` +
-        `⏳ *Validade:* Válido para teste rápido hoje!\n\n` +
+        `⏳ *Válido até:* ${formattedDate}\n\n` +
         `📥 *Baixe o aplicativo oficial aqui:* ${link}\n\n` +
         `Qualquer dúvida para instalar na Smart TV ou Celular, me avise!`
       );
@@ -632,12 +752,13 @@ class SaaSDataManager {
 
     return encodeURIComponent(
       `⭐ *BEM-VINDO AO ${appName.toUpperCase()}!*\n\n` +
-      `Olá, *${client.Nome}*, sua assinatura de streaming foi ativada com sucesso:\n\n` +
-      `📱 *Device ID / Aparelho:* \`${client.ID}\`\n` +
+      `Olá, *${client.Nome}*, seu plano *PREMIUM* foi ativado com sucesso:\n\n` +
+      deviceLine +
       `👤 *Usuário:* \`${client.Email}\`\n` +
       `🔑 *Senha:* \`${client.Senha}\`\n` +
+      `💎 *Status:* PREMIUM\n` +
       `📺 *Limite de Telas:* ${client.Limite}\n` +
-      `📅 *Vencimento:* ${client.Vencimento}\n\n` +
+      `📅 *Vencimento:* ${formattedDate}\n\n` +
       `📥 *Baixar Aplicativo Oficial:* ${link}\n\n` +
       `Agradecemos pela preferência e bom entretenimento! 🍿`
     );

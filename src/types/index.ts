@@ -2,7 +2,7 @@ export type UserRole = 'SUPER_ADMIN' | 'TENANT_OWNER' | 'RESELLER';
 
 export type TenantStatus = 'ATIVO' | 'BLOQUEADO';
 export type ResellerStatus = 'ATIVO' | 'BLOQUEADO';
-export type ClientStatus = 'Ativo' | 'Grátis' | 'Vencido' | 'Teste';
+export type ClientStatus = 'Premium' | 'Ativo' | 'Grátis' | 'Vencido' | 'Teste';
 
 export interface Tenant {
   id: string;
@@ -18,10 +18,10 @@ export interface Tenant {
   baserowToken: string;
   baserowTableUsuarios: string;
   chavePix: string;
-  valorCreditoUnitario: number; // Ex: R$ 15,00 por crédito
+  valorCreditoUnitario: number;
   appDownloadUrl: string;
   status: TenantStatus;
-  vencimentoAssinatura: string; // YYYY-MM-DD
+  vencimentoAssinatura: string;
   dataCriacao: string;
 }
 
@@ -41,18 +41,21 @@ export interface Reseller {
 
 export interface BaserowClient {
   id: string | number; // Baserow row ID
-  ID: string; // Device ID do aparelho (ex: 05e859593bcb0110) ou código
+  ID?: string | null; // Device ID do aparelho (atribuído pelo aparelho do usuário na primeira conexão, nulo ao criar)
+  DeviceId?: string | null;
   Nome: string; // Nome do cliente final
   Email: string; // Email ou login de acesso
   Senha: string; // Senha do app
-  Status: ClientStatus;
-  Vencimento: string; // YYYY-MM-DD
+  Status: ClientStatus; // "Premium" para assinantes, "Teste", "Grátis", "Vencido"
+  Vencimento: string; // Formato ISO completo: 2026-10-28T06:45:39.809Z
+  DataCriacao?: string; // Formato ISO completo: 2026-10-28T06:45:39.809Z
   Limite: number; // Telas simultâneas (padrão 1)
   RevendedorId: string; // UUID do revendedor criador
   CriadoPor: string; // Nome do revendedor ou "DONO"
-  WhatsApp?: string; // Telefone do cliente final para lembretes
+  Telefone?: string | null; // Telefone/WhatsApp internacional
+  WhatsApp?: string | null;
   tenantId: string;
-  dataCriacao: string;
+  dataCriacao?: string;
 }
 
 export interface CreditTransaction {
@@ -74,4 +77,10 @@ export interface AuthUser {
   tenantId?: string;
   tenant?: Tenant;
   reseller?: Reseller;
+  impersonatedBy?: {
+    userId: string;
+    role: UserRole;
+    name: string;
+  };
 }
+

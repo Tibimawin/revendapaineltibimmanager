@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Tenant, Reseller, BaserowClient, CreditTransaction } from '../types';
 import { saasStore } from '../services/storage';
 import { DynamicBaserowClient } from '../services/baserowClient';
+import { InternationalPhoneInput } from './InternationalPhoneInput';
 import { 
   Users, 
   Coins, 
@@ -19,6 +20,8 @@ import {
   MessageSquare,
   ArrowUpRight,
   ArrowDownLeft,
+  Sparkles,
+  Clock,
   X
 } from 'lucide-react';
 
@@ -436,35 +439,81 @@ export const TenantView: React.FC<TenantViewProps> = ({ tenant, onImpersonateRes
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-[#0A0F1D]/80 text-slate-400 border-b border-white/8">
-                  <th className="py-3 px-4 font-semibold uppercase">Cliente</th>
-                  <th className="py-3 px-4 font-semibold uppercase">Device ID</th>
+                  <th className="py-3 px-4 font-semibold uppercase">Cliente & Contato</th>
+                  <th className="py-3 px-4 font-semibold uppercase">Device ID (Aparelho)</th>
                   <th className="py-3 px-4 font-semibold uppercase">Login / Senha</th>
-                  <th className="py-3 px-4 font-semibold uppercase">Vencimento</th>
-                  <th className="py-3 px-4 font-semibold uppercase">Telas</th>
                   <th className="py-3 px-4 font-semibold uppercase">Status</th>
+                  <th className="py-3 px-4 font-semibold uppercase">Vencimento (ISO)</th>
+                  <th className="py-3 px-4 font-semibold uppercase">Criado em (DataCriacao)</th>
+                  <th className="py-3 px-4 font-semibold uppercase">Telas</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-slate-300">
                 {directClientsList.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                    <td colSpan={7} className="py-8 text-center text-slate-500">
                       Nenhum cliente direto cadastrado ainda.
                     </td>
                   </tr>
                 ) : (
                   directClientsList.map((c) => (
                     <tr key={c.id} className="hover:bg-white/[0.02]">
-                      <td className="py-3.5 px-4 font-bold text-white">{c.Nome}</td>
-                      <td className="py-3.5 px-4 font-mono text-cyan-300 text-[11px]">{c.ID}</td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-white">{c.Nome}</div>
+                        {(c.WhatsApp || c.Telefone) && (
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            WhatsApp: {c.WhatsApp || c.Telefone}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {c.ID && String(c.ID).trim() !== '' ? (
+                          <span className="font-mono text-cyan-300 text-[11px]">{c.ID}</span>
+                        ) : (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#0A0F1D] border border-white/5 text-slate-400 text-[10px]"
+                            title="O ID será registrado automaticamente pelo aparelho físico (TV Box/Celular) ao se conectar"
+                          >
+                            <Clock className="w-3 h-3 text-cyan-400" />
+                            <span className="font-mono">Aguardando Aparelho</span>
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">
-                        <div>{c.Email}</div>
+                        <div className="text-white">{c.Email}</div>
                         <div className="text-slate-500">Senha: {c.Senha}</div>
                       </td>
-                      <td className="py-3.5 px-4 font-mono tabular-nums">{c.Vencimento}</td>
-                      <td className="py-3.5 px-4">{c.Limite} tela(s)</td>
                       <td className="py-3.5 px-4">
-                        <span className="text-emerald-400 font-semibold">{c.Status}</span>
+                        {c.Status === 'Premium' || c.Status === 'Ativo' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                            <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                            PREMIUM
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                            {c.Status}
+                          </span>
+                        )}
                       </td>
+                      <td className="py-3.5 px-4 font-mono tabular-nums">
+                        <div className="text-xs text-slate-200">
+                          {new Date(c.Vencimento).toLocaleDateString('pt-BR')}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate max-w-[130px]" title={c.Vencimento}>
+                          {c.Vencimento}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono">
+                        <div className="text-xs text-slate-300">
+                          {c.DataCriacao || c.dataCriacao
+                            ? new Date(c.DataCriacao || c.dataCriacao!).toLocaleDateString('pt-BR')
+                            : '-'}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate max-w-[120px]" title={c.DataCriacao || c.dataCriacao || ''}>
+                          {c.DataCriacao || c.dataCriacao || 'Pendente'}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono">{c.Limite} tela(s)</td>
                     </tr>
                   ))
                 )}
@@ -661,17 +710,12 @@ export const TenantView: React.FC<TenantViewProps> = ({ tenant, onImpersonateRes
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">WhatsApp</label>
-                <input
-                  type="text"
-                  required
-                  value={resellerForm.whatsapp}
-                  onChange={(e) => setResellerForm({ ...resellerForm, whatsapp: e.target.value })}
-                  placeholder="5511999998888"
-                  className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                />
-              </div>
+              <InternationalPhoneInput
+                value={resellerForm.whatsapp}
+                onChange={(fullNum) => setResellerForm({ ...resellerForm, whatsapp: fullNum })}
+                label="WhatsApp do Revendedor (Qualquer País / DDI)"
+                required
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -806,6 +850,12 @@ export const TenantView: React.FC<TenantViewProps> = ({ tenant, onImpersonateRes
                 />
               </div>
 
+              <InternationalPhoneInput
+                value={directClientForm.WhatsApp}
+                onChange={(fullNum) => setDirectClientForm({ ...directClientForm, WhatsApp: fullNum })}
+                label="WhatsApp do Cliente (Qualquer País / DDI)"
+              />
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Email / Usuário</label>
                 <input
@@ -828,6 +878,16 @@ export const TenantView: React.FC<TenantViewProps> = ({ tenant, onImpersonateRes
                   placeholder="Senha"
                   className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                 />
+              </div>
+
+              <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Assinatura Automática PREMIUM (Sem Custo de Créditos)</span>
+                </div>
+                <p className="text-slate-300">
+                  O cliente será ativado como <strong className="text-emerald-400">Premium</strong> com datas em formato ISO (ex: 2026-10-28T06:45:39.809Z). O <strong className="text-cyan-300">Device ID</strong> não precisa ser inserido: o aparelho do usuário gera e vincula automaticamente no 1º acesso.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
