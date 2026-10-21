@@ -1,0 +1,6 @@
+{
+  "name": "StreamMaster SaaS - Gestão & Revenda Multi-Tenant OTT/IPTV",
+  "description": "Plataforma SaaS Multi-Tenant White-Label de Revenda de Acessos para Aplicativos de Streaming com tema Dark Neon, integração Baserow e gestão de créditos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

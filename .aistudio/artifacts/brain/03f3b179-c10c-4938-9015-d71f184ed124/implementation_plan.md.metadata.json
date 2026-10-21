@@ -1,0 +1,6 @@
+{
+  "summary":  "Plano de implementação detalhado para a Plataforma Web SaaS Multi-Tenant de Revenda de Streaming White-Label em 3 níveis (Super Admin, Dono do App e Revendedor), com tema Dark Neon Cinema, integração REST dinâmica ao Baserow, sistema transacional de créditos e recargas PIX.",
+  "updatedAt":  "2026-10-21T10:40:30.043504784Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

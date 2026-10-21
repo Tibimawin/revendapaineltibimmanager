@@ -1,0 +1,105 @@
+// Schema Prisma para a Plataforma SaaS Multi-Tenant de Revenda de Streaming
+// Compatível com PostgreSQL / SQLite / MySQL
+
+datasource db {
+  provider = "postgresql" // ou "sqlite" para desenvolvimento local
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TenantStatus {
+  ATIVO
+  BLOQUEADO
+}
+
+enum ResellerStatus {
+  ATIVO
+  BLOQUEADO
+}
+
+enum TransactionType {
+  ADICAO
+  SUBTRACAO
+  CONSUMO_NOVO
+  CONSUMO_RENOVACAO
+}
+
+// ==========================================
+// NÍVEL 1 & 2: INQUILINO / DONO DO APLICATIVO
+// ==========================================
+model Tenant {
+  id                    String              @id @default(uuid())
+  nomeDono              String
+  email                 String              @unique
+  senha                 String              // Hash bcrypt
+  whatsapp              String
+  nomeApp               String              // Ex: "CINEFP TV", "VIP PLAY"
+  slug                  String              @unique // Ex: "cinefp", "vipplay"
+  logoUrl               String
+  corPrimaria           String              @default("#00E5FF")
+  baserowUrl            String              @default("http://31.220.72.235:8080/")
+  baserowToken          String              // Token de API do Baserow do Dono
+  baserowTableUsuarios  String              @default("1165") // ID da tabela
+  chavePix              String              // Chave PIX para revendedores pagarem créditos
+  valorCreditoUnitario  Float               @default(15.00)
+  appDownloadUrl        String?
+  status                TenantStatus        @default(ATIVO)
+  vencimentoAssinatura  DateTime            // Controle de pagamento ao Super Admin
+  dataCriacao           DateTime            @default(now())
+  dataAtualizacao       DateTime            @updatedAt
+
+  // Relações
+  resellers             Reseller[]
+  transactions          CreditTransaction[]
+
+  @@map("tenants")
+}
+
+// ==========================================
+// NÍVEL 3: REVENDEDOR PARCEIRO DO DONO
+// ==========================================
+model Reseller {
+  id                  String              @id @default(uuid())
+  tenantId            String              // CRÍTICO: isolamento de dados
+  nome                String
+  email               String              @unique
+  senha               String              // Hash bcrypt
+  whatsapp            String
+  saldoCreditos       Int                 @default(0)
+  cotaTestesDiarios   Int                 @default(10)
+  testesUsadosHoje    Int                 @default(0)
+  status              ResellerStatus      @default(ATIVO)
+  dataCriacao         DateTime            @default(now())
+  dataAtualizacao     DateTime            @updatedAt
+
+  // Relações
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions        CreditTransaction[]
+
+  @@index([tenantId])
+  @@map("resellers")
+}
+
+// ==========================================
+// AUDITORIA E EXTRATO DE TRANSAÇÃO DE CRÉDITOS
+// ==========================================
+model CreditTransaction {
+  id              String          @id @default(uuid())
+  tenantId        String
+  revendedorId    String
+  revendedorNome  String
+  tipo            TransactionType
+  quantidade      Int             // Positivo (+10) ou Negativo (-1)
+  descricao       String
+  dataCriacao     DateTime        @default(now())
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reseller        Reseller        @relation(fields: [revendedorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([revendedorId])
+  @@map("credit_transactions")
+}
