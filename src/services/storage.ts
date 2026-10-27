@@ -164,6 +164,12 @@ class SaaSDataManager {
   }
 
   public impersonateTenant(tenantId: string): void {
+    // Revendedor NUNCA pode acessar painel do dono
+    if (this.currentUser?.role === 'RESELLER' || this.currentUser?.role !== 'SUPER_ADMIN') {
+      console.warn('Acesso restrito: Revendedores não têm permissão para acessar o painel do Dono.');
+      return;
+    }
+
     const tenant = this.tenants.find((t) => t.id === tenantId);
     if (tenant) {
       const actor = this.currentUser;
@@ -573,10 +579,14 @@ class SaaSDataManager {
       }
     }
 
-    const testCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const cleanName = Nome.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const login = `teste.${cleanName || 'stream'}${testCode.slice(0, 3)}@app.com`;
-    const senha = `test${testCode.slice(3)}`;
+    // Email pequeno e simples conforme solicitado: teste12@gmail.com ou teste.nome@gmail.com
+    const cleanFirstName = Nome.trim().split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 7);
+    const shortNum = Math.floor(10 + Math.random() * 89); // 2 dígitos: ex 12, 34, 78
+    const login = cleanFirstName && cleanFirstName.length >= 3 && cleanFirstName.length <= 6
+      ? `teste.${cleanFirstName}@gmail.com`
+      : `teste${shortNum}@gmail.com`;
+
+    const senha = Math.floor(1000 + Math.random() * 9000).toString(); // Senha de 4 dígitos fácil de digitar no controle
     const now = new Date();
     const nowIso = now.toISOString();
     const expIso = new Date(now.getTime() + horas * 60 * 60 * 1000).toISOString();
@@ -589,7 +599,7 @@ class SaaSDataManager {
       Senha: senha,
       WhatsApp: WhatsApp || null,
       Telefone: WhatsApp || null,
-      Status: 'Teste',
+      Status: 'Grátis', // Conforme solicitado: deve ser Grátis e NÃO Teste
       Vencimento: expIso,
       DataCriacao: nowIso,
       dataCriacao: nowIso,
@@ -718,10 +728,58 @@ class SaaSDataManager {
   }
 
   /**
+   * Gera o texto limpo para cópia direta na área de transferência (para mandar ao cliente)
+   */
+  public generateClientAccessText(client: BaserowClient, appName: string, downloadUrl?: string): string {
+    const isTest = client.Status === 'Grátis' || client.Status === 'Teste';
+    const link = downloadUrl || 'https://cinefp.app/download';
+
+    let formattedDate = client.Vencimento;
+    try {
+      const d = new Date(client.Vencimento);
+      if (!isNaN(d.getTime())) {
+        formattedDate = `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+      }
+    } catch {}
+
+    const deviceLine = client.ID && String(client.ID).trim() !== ''
+      ? `📱 Device ID do Aparelho: ${client.ID}\n`
+      : `📱 Instalação do Aparelho: Abra o aplicativo e entre com seu Usuário e Senha abaixo. Seu aparelho será vinculado automaticamente no 1º acesso!\n`;
+
+    if (isTest) {
+      return (
+        `🎬 SEU TESTE GRÁTIS NO ${appName.toUpperCase()} ESTÁ LIBERADO!\n\n` +
+        `Olá, ${client.Nome}! Seguem os seus dados de acesso:\n\n` +
+        deviceLine +
+        `👤 Usuário: ${client.Email}\n` +
+        `🔑 Senha: ${client.Senha}\n` +
+        `💎 Status: GRÁTIS\n` +
+        `📺 Telas Permitidas: ${client.Limite}\n` +
+        `⏳ Válido até: ${formattedDate}\n\n` +
+        `📥 Baixe o aplicativo oficial aqui: ${link}\n\n` +
+        `Qualquer dúvida para instalar na Smart TV ou Celular, me avise!`
+      );
+    }
+
+    return (
+      `⭐ BEM-VINDO AO ${appName.toUpperCase()}!\n\n` +
+      `Olá, ${client.Nome}, seu plano PREMIUM foi ativado com sucesso:\n\n` +
+      deviceLine +
+      `👤 Usuário: ${client.Email}\n` +
+      `🔑 Senha: ${client.Senha}\n` +
+      `💎 Status: PREMIUM\n` +
+      `📺 Limite de Telas: ${client.Limite}\n` +
+      `📅 Vencimento: ${formattedDate}\n\n` +
+      `📥 Baixar Aplicativo Oficial: ${link}\n\n` +
+      `Agradecemos pela preferência e bom entretenimento! 🍿`
+    );
+  }
+
+  /**
    * Gera a mensagem formatada para envio no WhatsApp do cliente final
    */
   public generateWhatsAppMessage(client: BaserowClient, appName: string, downloadUrl?: string): string {
-    const isTest = client.Status === 'Teste';
+    const isTest = client.Status === 'Grátis' || client.Status === 'Teste';
     const link = downloadUrl || 'https://cinefp.app/download';
 
     let formattedDate = client.Vencimento;
@@ -743,6 +801,7 @@ class SaaSDataManager {
         deviceLine +
         `👤 *Usuário:* \`${client.Email}\`\n` +
         `🔑 *Senha:* \`${client.Senha}\`\n` +
+        `💎 *Status:* GRÁTIS\n` +
         `📺 *Telas Permitidas:* ${client.Limite}\n` +
         `⏳ *Válido até:* ${formattedDate}\n\n` +
         `📥 *Baixe o aplicativo oficial aqui:* ${link}\n\n` +

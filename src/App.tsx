@@ -44,10 +44,12 @@ export default function App() {
   };
 
   const handleImpersonateTenant = (tenantId: string) => {
+    if (currentUser?.role !== 'SUPER_ADMIN') return;
     saasStore.impersonateTenant(tenantId);
   };
 
   const handleImpersonateReseller = (resellerId: string) => {
+    if (currentUser?.role !== 'TENANT_OWNER' && currentUser?.role !== 'SUPER_ADMIN') return;
     saasStore.impersonateReseller(resellerId);
   };
 

@@ -657,8 +657,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
 
       {/* Modal: Configurações Master do Desenvolvedor (Tabelas 1575, 1574, 889) */}
       {isConfigModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-lg bg-[#11192C] border border-white/10 rounded-2xl shadow-2xl p-6 text-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-[#11192C] border border-white/10 rounded-2xl shadow-2xl p-5 sm:p-6 text-slate-100 my-auto max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-2.5">
                 <Settings className="w-5 h-5 text-cyan-400" />
@@ -767,8 +767,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onImpersonateTen
 
       {/* Modal: Cadastro / Edição de Dono do App */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-2xl bg-[#11192C] border border-white/10 rounded-2xl shadow-2xl p-6 text-slate-100 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="relative w-full max-w-2xl bg-[#11192C] border border-white/10 rounded-2xl shadow-2xl p-5 sm:p-6 text-slate-100 max-h-[92vh] overflow-y-auto my-auto">
             
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div>

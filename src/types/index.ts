@@ -19,10 +19,26 @@ export interface Tenant {
   baserowTableUsuarios: string;
   chavePix: string;
   valorCreditoUnitario: number;
+  asaasApiKey?: string;
+  asaasEnvironment?: 'production' | 'sandbox';
   appDownloadUrl: string;
   status: TenantStatus;
   vencimentoAssinatura: string;
   dataCriacao: string;
+}
+
+export interface AsaasPaymentOrder {
+  id: string;
+  tenantId: string;
+  resellerId: string;
+  resellerNome: string;
+  credits: number;
+  unitPrice: number;
+  totalValue: number;
+  pixQrCodeImage?: string;
+  pixCopiaECola?: string;
+  status: 'PENDING' | 'RECEIVED' | 'CONFIRMED' | 'OVERDUE';
+  dateCreated: string;
 }
 
 export interface Reseller {
